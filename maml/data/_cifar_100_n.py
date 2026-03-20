@@ -112,7 +112,7 @@ class CIFAR100N(MultiAnnotatorDataset):
             annotator_ids = np.repeat(annotator_ids, repeats=5, axis=0).astype(int).ravel()
             self.z = torch.full((len(self.x), self.get_n_annotators()), fill_value=-1)
             annotation_file = os.path.join(root, CIFAR100N.annotations_filename)
-            annotations = torch.load(annotation_file)
+            annotations = torch.load(annotation_file, weights_only=False)
             self.z[np.arange(len(self.x)), annotator_ids] = torch.from_numpy(annotations["noisy_label"])
         elif version in ["valid", "test"]:
             valid_indices, test_indices = train_test_split(

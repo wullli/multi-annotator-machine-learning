@@ -106,6 +106,7 @@ class CIFAR10N(MultiAnnotatorDataset):
         # Set samples and targets.
         self.x = cifar10.data
         self.y = torch.tensor(cifar10.targets).long()
+        self.n_annotators = None
 
         # Load and prepare annotations as tensor for `version="train"`.
         self.z = None
@@ -114,7 +115,7 @@ class CIFAR10N(MultiAnnotatorDataset):
             annotator_ids = pd.read_csv(side_information_file)[["Worker1-id", "Worker2-id", "Worker3-id"]].values
             annotator_ids = np.repeat(annotator_ids, repeats=10, axis=0).astype(int)
             annotation_file = os.path.join(root, CIFAR10N.annotations_filename)
-            annotations = torch.load(annotation_file)
+            annotations = torch.load(annotation_file, weights_only=False)
             z_random = np.column_stack(
                 (annotations["random_label1"], annotations["random_label2"], annotations["random_label3"])
             )

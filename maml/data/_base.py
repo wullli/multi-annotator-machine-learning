@@ -21,7 +21,8 @@ class MultiAnnotatorDataset(Dataset, ABC):
     """
 
     def __getitem__(self, idx: int):
-        batch_dict = {"x": self.get_sample(idx)}
+        sample = self.get_sample(idx)
+        batch_dict = sample if isinstance(sample, dict) else {"x": sample}
         y = self.get_true_label(idx)
         if y is not None:
             batch_dict["y"] = y
@@ -299,7 +300,7 @@ class SSLDatasetWrapper(MultiAnnotatorDataset):
             file_name = os.path.join(cache_dir, hash + ".pth")
             if os.path.exists(file_name):
                 print("\nLoading cached features from", file_name)
-                self.features = torch.load(file_name, map_location="cpu")
+                self.features = torch.load(file_name, map_location="cpu", weights_only=False)
             else:
                 self.features = self.get_features()
                 print("\nSaving features to cache file", file_name)
