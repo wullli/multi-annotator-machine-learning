@@ -107,7 +107,7 @@ class AggregateClassifier(MaMLClassifier):
         x, z_agg = batch["x"], batch["z_agg"]
 
         # One-hot encode aggregated annotations.
-        if z_agg.ndim != 2:
+        if not torch.is_floating_point(z_agg):
             z_agg = F.one_hot(z_agg + 1, num_classes=self.n_classes + 1)[:, 1:].float()
 
         # Perform mixup, if required.

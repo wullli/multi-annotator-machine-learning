@@ -1,3 +1,4 @@
+from typing import Mapping
 import math
 import torch
 
@@ -8,8 +9,21 @@ from torch.nn import functional as F
 
 from typing import Optional, Dict, Union
 
+from collections.abc import Mapping
 from ._base import MaMLClassifier
 from ..utils import mixup, permute_same_value_indices
+
+
+def _n_samples(x):
+    if isinstance(x, Mapping):
+        return next(iter(x.values())).shape[0]
+    return x.shape[0]
+
+
+def _index_x(x, indices):
+    if isinstance(x, Mapping):
+        return {k: v[indices] for k, v in x.items()}
+    return x[indices]
 
 
 class AnnotMixModule(nn.Module):
@@ -65,7 +79,7 @@ class AnnotMixModule(nn.Module):
         self.ap_embed_x = ap_embed_x
 
     def forward(
-        self, x: torch.tensor, a: Optional[torch.tensor] = None, combs: Union[str, None, torch.tensor] = "full"
+            self, x: torch.tensor, a: Optional[torch.tensor] = None, combs: Union[str, None, torch.tensor] = "full", embed_x: bool = True
     ):
         """
         Forward propagation of samples' and annotators' (optional) features through the GT and AP (optional) model.
@@ -89,7 +103,10 @@ class AnnotMixModule(nn.Module):
             Logits of conditional confusion matrices as proxies of the annotators' performances.
         """
         # Compute feature embedding for classifier.
-        x_learned = self.gt_embed_x(x)
+        if embed_x:
+            x_learned = self.gt_embed_x(x)
+        else:
+            x_learned = x
 
         # Compute class-membership probabilities.
         logits_class = self.gt_output(x_learned)
@@ -102,7 +119,7 @@ class AnnotMixModule(nn.Module):
         sample_embeddings = self.ap_embed_x(x_learned.detach())
         if combs == "full":
             n_annotators = a.shape[0]
-            n_samples = x.shape[0]
+            n_samples = _n_samples(x)
             combs = torch.cartesian_prod(torch.arange(n_samples), torch.arange(n_annotators))
             combs = {"x": combs[:, 0], "a": combs[:, 1]}
         if isinstance(combs, dict) and "x" in combs:
@@ -211,7 +228,12 @@ class AnnotMixClassifier(MaMLClassifier):
         """
         # Get data.
         x, a, z = batch["x"], batch["a"], batch["z"]
-        n_samples, n_annotators = x.shape[0], a.shape[1]
+
+        is_mapping = isinstance(x, Mapping)
+        if is_mapping:
+            x = self.network.gt_embed_x(x)
+
+        n_samples, n_annotators = _n_samples(x), a.shape[1]
 
         # Compute all combinations of samples and annotators.
         combs = torch.cartesian_prod(
@@ -226,15 +248,15 @@ class AnnotMixClassifier(MaMLClassifier):
 
         # Mixup of samples, annotators, and labels.
         if self.alpha > 0:
-            x, a = x[combs[:, 0]], a[combs[:, 1]]
+            x, a = _index_x(x, combs[:, 0]), a[combs[:, 1]]
             permute_indices = None
             if self.mix_only_annotators:
                 permute_indices = permute_same_value_indices(combs[:, 0])
             x, a, z, _, _ = mixup(x, a, z, alpha=self.alpha, permute_indices=permute_indices)
-            logits_class, logits_perf = self.network(x=x, a=a, combs=combs)
+            logits_class, logits_perf = self.network(x=x, a=a, combs=combs, embed_x=not is_mapping)
         else:
             combs = {"x": combs[:, 0], "a": combs[:, 1]}
-            logits_class, logits_perf = self.network(x=x, a=a, combs=combs)
+            logits_class, logits_perf = self.network(x=x, a=a, combs=combs, embed_x=not is_mapping)
             logits_class = logits_class[combs["x"]]
 
         # Outputs of network.
@@ -304,9 +326,14 @@ class AnnotMixClassifier(MaMLClassifier):
         """
         self.eval()
         x = batch["x"]
+
+        is_mapping = isinstance(x, Mapping)
+        if is_mapping:
+            x = self.network.gt_embed_x(x)
+
         a = batch.get("a", None)
         a = a[0] if a is not None else None
-        output = self.network(x=x, a=a)
+        output = self.network(x=x, a=a, embed_x=not is_mapping)
         if a is None:
             return {"p_class": F.softmax(output, dim=-1)}
         else:
