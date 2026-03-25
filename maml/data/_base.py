@@ -164,6 +164,11 @@ class MultiAnnotatorDataset(Dataset, ABC):
             stats += f"majority voting accuracy  [%]: {mv_acc}\n"
             acc_per_annot = torch.sum(is_true * is_lbld, dim=0) / n_labels_per_annot
             stats += f"accuracy per annotator [#]: {acc_per_annot.mean()}+-{acc_per_annot.std()}\n"
+        if hasattr(self, "y") and self.y is not None:
+            classes, counts = torch.unique(self.y, return_counts=True)
+            total = counts.sum().float()
+            label_balance = ", ".join(f"{c.item()}: {100 * cnt / total:.1f}% ({cnt})" for c, cnt in zip(classes, counts))
+            stats += f"label balance [%]: {label_balance}\n"
         return stats
 
     @staticmethod
@@ -212,7 +217,7 @@ class MultiAnnotatorDataset(Dataset, ABC):
                 proba = summed_proba / summed_proba.sum(dim=-1, keepdim=True)
             else:
                 votes = compute_vote_vectors(y=z.numpy(), missing_label=-1)
-                proba = torch.from_numpy(votes / votes.sum(axis=-1, keepdims=True))
+                proba = torch.from_numpy((votes / votes.sum(axis=-1, keepdims=True)).astype(np.float32))
             if aggregation_method == "soft-majority-vote":
                 return proba
             else:

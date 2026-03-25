@@ -139,7 +139,7 @@ class Dopanim(MultiAnnotatorDataset):
         variant: str = "worst-1",
         annotation_type: Literal["class-labels", "probabilities"] = "class-labels",
     ):
-        # Download data.
+        # Download data
         self.folder = os.path.join(root, Dopanim.base_folder)
         if download:
             download_and_extract_archive(Dopanim.url, root, filename=Dopanim.filename, extract_root=self.folder)

@@ -29,7 +29,7 @@ class AggregateClassifier(MaMLClassifier):
         Determines the parameters of the beta distribution used for sampling the mixup coefficients.
     optimizer : torch.optim.Optimizer.__class__, optional (default=RAdam.__class__)
         Optimizer class responsible for optimizing the GT and AP parameters. If `None`, the `RAdam` optimizer is used
-        by default.
+        by default
     optimizer_gt_dict : dict, optional (default=None)
         Parameters passed to `optimizer` for the GT model.
     lr_scheduler : torch.optim.lr_scheduler.LRScheduler.__class__, optional (default=None)
