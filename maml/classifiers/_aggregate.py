@@ -122,6 +122,7 @@ class AggregateClassifier(MaMLClassifier):
             z_agg=z_agg,
             logits_class=logits_class,
         )
+        self._log_train_metrics(loss, batch, F.softmax(logits_class, dim=-1))
         return loss
 
     @torch.inference_mode()

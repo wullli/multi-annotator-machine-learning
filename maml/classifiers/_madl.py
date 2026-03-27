@@ -298,6 +298,7 @@ class MaDLClassifier(MaMLClassifier):
             gamma=self.gamma,
             gamma_dist=self.gamma_dist,
         )
+        self._log_train_metrics(loss, batch, F.softmax(logits_class, dim=-1))
         return loss
 
     @torch.inference_mode()

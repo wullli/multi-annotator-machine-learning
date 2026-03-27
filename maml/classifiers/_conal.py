@@ -162,7 +162,7 @@ class CoNALClassifier(MaMLClassifier):
         loss : torch.Float
             Computed cross-entropy loss with regularization.
         """
-        _, logits_annot = self.forward(x=batch["x"], return_ap_outputs=True)
+        p_class, logits_annot = self.forward(x=batch["x"], return_ap_outputs=True)
         loss = CoNALClassifier.loss(
             z=batch["z"],
             logits_annot=logits_annot,
@@ -170,6 +170,7 @@ class CoNALClassifier(MaMLClassifier):
             ap_confs_common=self.ap_confs_common,
             lmbda=self.lmbda,
         )
+        self._log_train_metrics(loss, batch, p_class)
         return loss
 
     @torch.inference_mode()

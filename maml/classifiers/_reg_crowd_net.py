@@ -136,6 +136,7 @@ class RegCrowdNetClassifier(MaMLClassifier):
             lmbda=self.lmbda,
             regularization=self.regularization,
         )
+        self._log_train_metrics(loss, batch, F.softmax(logits_class, dim=-1))
         return loss
 
     @torch.inference_mode()

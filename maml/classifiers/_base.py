@@ -1,3 +1,4 @@
+from sklearn.metrics import f1_score
 import torch
 
 from abc import ABC, abstractmethod
@@ -49,6 +50,31 @@ class MaMLClassifier(LightningModule, ABC):
         self.lr_scheduler = lr_scheduler
         self.lr_scheduler_dict = lr_scheduler_dict
 
+    def _log_train_metrics(self, loss, batch, p_class=None):
+        """
+        Logs training metrics: loss, and optionally accuracy and weighted F1.
+
+        Parameters
+        ----------
+        loss : torch.Tensor
+            Computed training loss.
+        batch : dict
+            Data batch fitting the dictionary structure of `maml.data.MultiAnnotatorDataset`.
+        p_class : torch.Tensor of shape (batch_size, n_classes), optional (default=None)
+            Class-membership probabilities. If provided along with `batch["y"]`, accuracy and F1 are logged.
+        """
+        y = batch.get("y")
+        if p_class is not None and y is not None:
+            batch_size = len(y)
+            y_pred = p_class.detach().argmax(dim=-1)
+            acc = (y_pred == y).float().mean()
+            f1 = f1_score(y_true=y.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="weighted")
+            self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
+            self.log("train_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
+            self.log("train_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
+        else:
+            self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+
     def validation_step(self, batch: Dict[str, torch.tensor], batch_idx: int, dataloader_idx: int = 0):
         """
         Evaluates and logs the performance of the GT model on the given validation data as `"gt_val_acc"`.
@@ -66,8 +92,22 @@ class MaMLClassifier(LightningModule, ABC):
         output = self.predict_step(batch=batch, batch_idx=batch_idx, dataloader_idx=dataloader_idx)
         p_class = output.get("p_class")
         y_pred = p_class.argmax(dim=-1)
-        acc = (y_pred == batch["y"]).float().mean()
+
+        z_agg = batch.get("z_agg", None)
+        if z_agg is not None:
+            z_agg_hard = z_agg.argmax(dim=-1)
+            acc = (y_pred == z_agg_hard).float().mean()
+            f1 = f1_score(y_true=z_agg_hard.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="weighted")
+            self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
+            self.log("val_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
+
+        y = batch["y"]
+        acc = (y_pred == y).float().mean()
+        f1 = f1_score(y_true=y.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="weighted")
         self.log("gt_val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
+        self.log("gt_val_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
+
+
 
     def test_step(self, batch: Dict[str, torch.tensor], batch_idx: int, dataloader_idx: Optional[int] = 0):
         """

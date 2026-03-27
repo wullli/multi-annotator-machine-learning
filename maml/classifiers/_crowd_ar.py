@@ -163,6 +163,7 @@ class CrowdARClassifier(MaMLClassifier):
             p_reliability=p_reliability,
             lmbda=self.lmbda,
         )
+        self._log_train_metrics(loss, batch, p_class)
 
         # Perform optimization.
         optimizer.zero_grad()

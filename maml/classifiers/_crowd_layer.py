@@ -130,11 +130,12 @@ class CrowdLayerClassifier(MaMLClassifier):
         loss : torch.Float
             Computed cross-entropy loss.
         """
-        _, logits_annot = self.forward(x=batch["x"], return_ap_outputs=True)
+        p_class, logits_annot = self.forward(x=batch["x"], return_ap_outputs=True)
         loss = CrowdLayerClassifier.loss(
             z=batch["z"],
             logits_annot=logits_annot,
         )
+        self._log_train_metrics(loss, batch, p_class)
         return loss
 
     @torch.inference_mode()

@@ -254,9 +254,12 @@ class AnnotMixClassifier(MaMLClassifier):
                 permute_indices = permute_same_value_indices(combs[:, 0])
             x, a, z, _, _ = mixup(x, a, z, alpha=self.alpha, permute_indices=permute_indices)
             logits_class, logits_perf = self.network(x=x, a=a, combs=combs, embed_x=not is_mapping)
+            with torch.no_grad():
+                p_class = F.softmax(self.network(x=batch["x"]), dim=-1)
         else:
             combs = {"x": combs[:, 0], "a": combs[:, 1]}
             logits_class, logits_perf = self.network(x=x, a=a, combs=combs, embed_x=not is_mapping)
+            p_class = F.softmax(logits_class, dim=-1)
             logits_class = logits_class[combs["x"]]
 
         # Outputs of network.
@@ -265,10 +268,12 @@ class AnnotMixClassifier(MaMLClassifier):
         p_annot_log = torch.logsumexp(p_class_log[:, :, None] + p_perf_log, dim=1)
 
         # Compute loss.
-        return AnnotMixClassifier.loss(
+        loss = AnnotMixClassifier.loss(
             z=z,
             p_annot_log=p_annot_log,
         )
+        self._log_train_metrics(loss, batch, p_class)
+        return loss
 
     @staticmethod
     def loss(z: torch.tensor, p_annot_log: torch.tensor):

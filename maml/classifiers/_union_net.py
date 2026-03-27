@@ -136,12 +136,13 @@ class UnionNetClassifier(MaMLClassifier):
             Computed cross-entropy loss between observed union of all annotators' class labels and predicted
             probabilities.
         """
-        _, p_union = self.forward(x=batch["x"], return_ap_outputs=True)
+        p_class, p_union = self.forward(x=batch["x"], return_ap_outputs=True)
         loss = UnionNetClassifier.loss(
             z=batch["z"],
             p_union=p_union,
             n_classes=self.n_classes,
         )
+        self._log_train_metrics(loss, batch, p_class)
         return loss
 
     @torch.inference_mode()
