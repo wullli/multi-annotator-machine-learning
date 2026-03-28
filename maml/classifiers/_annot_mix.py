@@ -114,6 +114,7 @@ class AnnotMixModule(nn.Module):
         if a is None:
             return logits_class
 
+
         # Compute annotator performances per annotator.
         annot_embeddings = self.ap_embed_a(a)
         sample_embeddings = self.ap_embed_x(x_learned.detach())
@@ -129,13 +130,24 @@ class AnnotMixModule(nn.Module):
 
         # Compute sample and annotator embeddings.
         # TODO: Use paired embedding in bradley-terry mode also for annotators
-        embeddings = torch.concat([sample_embeddings, annot_embeddings], dim=-1)
-
+        is_pair = x_learned.ndim == 3 and x_learned.shape[1] == 2
+        if is_pair:
+            embeddings = torch.concat([sample_embeddings, torch.stack([annot_embeddings] * 2, dim=1)], dim=-1)
+            embeddings = embeddings.reshape((-1, embeddings.shape[-1]))
+        else:
+            embeddings = torch.concat([sample_embeddings, annot_embeddings], dim=-1)
         # Propagate embeddings through hidden layers.
         embeddings = self.ap_hidden(embeddings)
 
+        if is_pair:
+            embeddings = embeddings.reshape((-1, 2, embeddings.shape[-1]))
+
         # Compute logits of annotator performances.
         logits_perf = self.ap_output(embeddings)
+
+        if is_pair:
+            logits_perf = logits_perf[:, 0] - logits_perf[:, 1]
+
         logits_perf = logits_perf.reshape((-1, self.n_classes, self.n_classes))
 
         return logits_class, logits_perf
@@ -249,7 +261,7 @@ class AnnotMixClassifier(MaMLClassifier):
         if self.network.n_classes == 2 and z.is_floating_point():
             z = (z > 0.5).long()
 
-        z = F.one_hot(z + 1, num_classes=self.network.n_classes + 1)
+        z = F.one_hot(z + 1, num_classes=self.network.n_classes + 1)[:, 1:].float()
 
         # Mixup of samples, annotators, and labels.
         if self.alpha > 0:

@@ -132,7 +132,8 @@ class CoNALClassifier(MaMLClassifier):
         is_pair = x_embedding.ndim == 3
 
         if is_pair:
-            x_embedding = x_embedding.view(-1, x_embedding.shape[-1] * 2)
+            x_embedding = x_embedding.view(-1, x_embedding.shape[-1])
+            a_embedding = torch.concat([a_embedding] * 2, dim=0)
 
         common_rate = torch.einsum("ij,kj->ik", (x_embedding, a_embedding))
         common_rate = F.sigmoid(common_rate)
@@ -145,7 +146,9 @@ class CoNALClassifier(MaMLClassifier):
         # cf. lower part of Eq. (1) in the article [1].
         logits_annot = common_rate[:, :, None] * logits_common[:, None, :]
         logits_annot += (1 - common_rate[:, :, None]) * logits_individual
-        logits_annot = logits_annot
+        if is_pair:
+            logits_annot = logits_annot.view(-1, 2, self.n_classes)
+            logits_annot = logits_annot[:, 0, :] - logits_annot[:, 1, :]
 
         return p_class, logits_annot
 
