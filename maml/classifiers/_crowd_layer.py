@@ -201,7 +201,15 @@ class CrowdLayerClassifier(MaMLClassifier):
         ----------
         [1] Rodrigues, F., & Pereira, F. Deep Learning from Crowds. AAAI Conf. Artif. Intell.
         """
-        loss = F.cross_entropy(logits_annot.swapaxes(1, 2), z, reduction="mean", ignore_index=-1)
+        if logits_annot.shape[-1] == 2:
+            p_annot = logits_annot.softmax(dim=-1)
+            p_annot_pos = p_annot[..., 1]
+            valid_mask = z != -1
+            z[~valid_mask] = 0  # Set missing labels to 0 for loss computation, they will be ignored due to the mask.
+            loss = F.binary_cross_entropy(p_annot_pos, z, reduction="none")
+            loss = loss[valid_mask].mean()
+        else:
+            loss = F.cross_entropy(logits_annot.swapaxes(1, 2), z, reduction="mean", ignore_index=-1)
         return loss
 
     @torch.no_grad()

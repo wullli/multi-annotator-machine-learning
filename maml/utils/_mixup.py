@@ -69,8 +69,9 @@ def mixup(
     [1] Zhang, H., Cisse, M., Dauphin, Y. N., & Lopez-Paz, D. (2018). mixup: Beyond Empirical Risk Minimization.
         Int. Conf. Learn. Represent.
     """
+    float_type = arrays[0].dtype if arrays[0].is_floating_point() else torch.float32
     if lmbda is None:
-        lmbda = torch.FloatTensor(np.random.beta(alpha, alpha, size=len(arrays[0]))).to(arrays[0].device)
+        lmbda = torch.tensor(np.random.beta(alpha, alpha, size=len(arrays[0])), dtype=float_type).to(arrays[0].device)
     if permute_indices is None:
         permute_indices = torch.randperm(len(arrays[0]))
     outputs = []

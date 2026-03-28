@@ -128,6 +128,7 @@ class AnnotMixModule(nn.Module):
             annot_embeddings = annot_embeddings[combs["a"]]
 
         # Compute sample and annotator embeddings.
+        # TODO: Use paired embedding in bradley-terry mode also for annotators
         embeddings = torch.concat([sample_embeddings, annot_embeddings], dim=-1)
 
         # Propagate embeddings through hidden layers.
@@ -244,7 +245,11 @@ class AnnotMixClassifier(MaMLClassifier):
         z, a = z.ravel(), a[0]
         is_lbld = z != -1
         combs, z = combs[is_lbld], z[is_lbld]
-        z = F.one_hot(z + 1, num_classes=self.network.n_classes + 1)[:, 1:].float()
+
+        if self.network.n_classes == 2 and z.is_floating_point():
+            z = (z > 0.5).long()
+
+        z = F.one_hot(z + 1, num_classes=self.network.n_classes + 1)
 
         # Mixup of samples, annotators, and labels.
         if self.alpha > 0:

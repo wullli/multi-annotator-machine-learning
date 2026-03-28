@@ -129,6 +129,11 @@ class CoNALClassifier(MaMLClassifier):
         a_embedding = F.normalize(self.ap_embed_a(self.annotators))
 
         # Take product of embeddings to compute probability of common confusion matrix: cf. Eq. (3) in the article [1].
+        is_pair = x_embedding.ndim == 3
+
+        if is_pair:
+            x_embedding = x_embedding.view(-1, x_embedding.shape[-1] * 2)
+
         common_rate = torch.einsum("ij,kj->ik", (x_embedding, a_embedding))
         common_rate = F.sigmoid(common_rate)
 
@@ -239,7 +244,17 @@ class CoNALClassifier(MaMLClassifier):
         """
         # Compute cross entropy for annotation probabilities according to the equation of final loss function in the
         # article [1].
-        loss = F.cross_entropy(logits_annot.swapaxes(1, 2), z, reduction="mean", ignore_index=-1)
+
+        if logits_annot.shape[-1] == 2:
+            # Binary classification case: use binary cross-entropy loss.
+            p_annot = logits_annot.softmax(dim=-1)
+            p_annot_pos = p_annot[..., 1]
+            valid_mask = z != -1
+            z[~valid_mask] = 0  # Set missing labels to 0 for loss computation, they will be ignored due to the mask.
+            loss = F.binary_cross_entropy(p_annot_pos, z, reduction="none")
+            loss = loss[valid_mask].mean()
+        else:
+            loss = F.cross_entropy(logits_annot.swapaxes(1, 2), z, reduction="mean", ignore_index=-1)
         if lmbda > 0:
             # Compute regularization term according to the equation of final loss function in the article [1].
             diff = (ap_confs_individual - ap_confs_common).view(z.shape[1], -1)
