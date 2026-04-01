@@ -286,7 +286,9 @@ class AnnotMixClassifier(MaMLClassifier):
         # Outputs of network.
         p_class_log = F.log_softmax(logits_class, dim=-1)
         p_perf_log = F.log_softmax(logits_perf, dim=-1)
-        p_annot_log = torch.logsumexp(p_class_log[:, :, None] + p_perf_log.view(*(p_perf_log.shape + (-1,))), dim=1)
+        is_pair = p_perf_log.ndim == 2
+        p_perf_log_aligned = p_perf_log.unsqueeze(-1) if is_pair else p_perf_log
+        p_annot_log = torch.logsumexp(p_class_log[:, :, None] + p_perf_log_aligned, dim=1)
 
         # Compute loss.
         loss = AnnotMixClassifier.loss(

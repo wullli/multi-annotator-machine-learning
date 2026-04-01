@@ -153,7 +153,8 @@ class CoNALClassifier(MaMLClassifier):
 
         logits_annot = common_rate[:, :, None] * logits_common[:, None, :]
         logits_annot += (1 - common_rate[:, :, None]) * logits_individual
-        logits_annot = torch.concat([torch.zeros_like(logits_annot), logits_annot], dim=-1) # make 2d again
+        if is_pair:
+            logits_annot = torch.concat([torch.zeros_like(logits_annot), logits_annot], dim=-1)
         return p_class, logits_annot
 
     def training_step(self, batch: Dict[str, torch.tensor], batch_idx: int, dataloader_idx: Optional[int] = 0):
