@@ -52,7 +52,9 @@ class MaMLClassifier(LightningModule, ABC):
 
     def _log_train_metrics(self, loss, batch, p_class=None):
         """
-        Logs training metrics: loss, and optionally accuracy and weighted F1.
+        Logs training metrics: loss, and optionally accuracy and macro F1.
+
+        Metrics are accumulated across gradient accumulation steps and logged only after the optimizer update.
 
         Parameters
         ----------
@@ -63,17 +65,35 @@ class MaMLClassifier(LightningModule, ABC):
         p_class : torch.Tensor of shape (batch_size, n_classes), optional (default=None)
             Class-membership probabilities. If provided along with `batch["y"]`, accuracy and F1 are logged.
         """
-        y = batch.get("y")
-        if p_class is not None and y is not None:
-            batch_size = len(y)
-            y_pred = p_class.detach().argmax(dim=-1)
-            acc = (y_pred == y).float().mean()
-            f1 = f1_score(y_true=y.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="weighted")
-            self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
-            self.log("train_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
-            self.log("train_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
+        if not hasattr(self, "_acc_loss"):
+            self._acc_loss, self._acc_y_pred, self._acc_y = [], [], []
+
+        self._acc_loss.append(loss.detach())
+
+        z_agg = batch.get("z_agg", None)
+        if p_class is not None and z_agg is not None:
+            self._acc_y_pred.append(p_class.detach().argmax(dim=-1))
+            if z_agg.ndim > 1:
+                z_agg = z_agg.argmax(dim=-1)
+            self._acc_y.append(z_agg)
+
+        if self.trainer.fit_loop._should_accumulate():
+            return
+
+        agg_loss = torch.stack(self._acc_loss).mean()
+        if self._acc_y_pred and self._acc_y:
+            y_pred = torch.cat(self._acc_y_pred)
+            y_all = torch.cat(self._acc_y)
+            batch_size = len(y_all)
+            acc = (y_pred == y_all).float().mean()
+            f1 = f1_score(y_true=y_all.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="macro")
+            self.log("train_loss", agg_loss, on_step=True, on_epoch=False, prog_bar=True, batch_size=batch_size)
+            self.log("train_acc", acc, on_step=True, on_epoch=False, prog_bar=True, batch_size=batch_size)
+            self.log("train_f1", torch.as_tensor(f1), on_step=True, on_epoch=False, prog_bar=True, batch_size=batch_size)
         else:
-            self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+            self.log("train_loss", agg_loss, on_step=True, on_epoch=False, prog_bar=True)
+
+        self._acc_loss, self._acc_y_pred, self._acc_y = [], [], []
 
     def validation_step(self, batch: Dict[str, torch.tensor], batch_idx: int, dataloader_idx: int = 0):
         """
@@ -97,13 +117,13 @@ class MaMLClassifier(LightningModule, ABC):
         if z_agg is not None:
             z_agg_hard = z_agg.argmax(dim=-1)
             acc = (y_pred == z_agg_hard).float().mean()
-            f1 = f1_score(y_true=z_agg_hard.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="weighted")
+            f1 = f1_score(y_true=z_agg_hard.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="macro")
             self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
             self.log("val_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
 
         y = batch["y"]
         acc = (y_pred == y).float().mean()
-        f1 = f1_score(y_true=y.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="weighted")
+        f1 = f1_score(y_true=y.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="macro")
         self.log("gt_val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
         self.log("gt_val_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
 

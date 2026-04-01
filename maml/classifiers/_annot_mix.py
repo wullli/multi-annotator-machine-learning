@@ -12,7 +12,7 @@ from typing import Optional, Dict, Union
 from collections.abc import Mapping
 from ._base import MaMLClassifier
 from ..utils import mixup, permute_same_value_indices
-
+from crowdsource_irt.learning.backbones import BradleyTerryOutput
 
 def _n_samples(x):
     if isinstance(x, Mapping):
@@ -133,22 +133,22 @@ class AnnotMixModule(nn.Module):
         is_pair = x_learned.ndim == 3 and x_learned.shape[1] == 2
         if is_pair:
             embeddings = torch.concat([sample_embeddings, torch.stack([annot_embeddings] * 2, dim=1)], dim=-1)
-            embeddings = embeddings.reshape((-1, embeddings.shape[-1]))
+            embeddings = embeddings.reshape(-1, embeddings.shape[-1])
         else:
             embeddings = torch.concat([sample_embeddings, annot_embeddings], dim=-1)
+
         # Propagate embeddings through hidden layers.
         embeddings = self.ap_hidden(embeddings)
-
-        if is_pair:
-            embeddings = embeddings.reshape((-1, 2, embeddings.shape[-1]))
 
         # Compute logits of annotator performances.
         logits_perf = self.ap_output(embeddings)
 
         if is_pair:
+            logits_perf = logits_perf.view(-1, 2, 1)
             logits_perf = logits_perf[:, 0] - logits_perf[:, 1]
-
-        logits_perf = logits_perf.reshape((-1, self.n_classes, self.n_classes))
+            logits_perf = torch.concat([torch.zeros_like(logits_perf), logits_perf], dim=-1)
+        else:
+            logits_perf = logits_perf.reshape((-1, self.n_classes, self.n_classes))
 
         return logits_class, logits_perf
 
@@ -211,10 +211,14 @@ class AnnotMixClassifier(MaMLClassifier):
         self.alpha = alpha
         self.eta = eta
         self.mix_only_annotators = mix_only_annotators
-        self.register_buffer("eye", torch.eye(self.network.n_classes))
+
+        self.pair = isinstance(self.network.gt_output, BradleyTerryOutput)
+
+        self.register_buffer("eye", torch.eye(self.network.n_classes if not self.pair else 1))
         self.register_buffer("one_minus_eye", 1 - self.eye)
 
-        # Set prior eta as bias.
+
+
         bias = (math.log(eta * (self.network.n_classes - 1) / (1 - eta)) * self.eye).flatten()
         self.network.ap_output.bias = torch.nn.Parameter(bias)
 
@@ -282,7 +286,7 @@ class AnnotMixClassifier(MaMLClassifier):
         # Outputs of network.
         p_class_log = F.log_softmax(logits_class, dim=-1)
         p_perf_log = F.log_softmax(logits_perf, dim=-1)
-        p_annot_log = torch.logsumexp(p_class_log[:, :, None] + p_perf_log, dim=1)
+        p_annot_log = torch.logsumexp(p_class_log[:, :, None] + p_perf_log.view(*(p_perf_log.shape + (-1,))), dim=1)
 
         # Compute loss.
         loss = AnnotMixClassifier.loss(

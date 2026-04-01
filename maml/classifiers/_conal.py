@@ -6,7 +6,7 @@ from torch.nn import functional as F
 from torch.optim import Optimizer, RAdam
 from torch.optim.lr_scheduler import LRScheduler
 from typing import Optional, Dict
-
+from crowdsource_irt.learning.backbones import BradleyTerryOutput
 from ._base import MaMLClassifier
 
 
@@ -87,6 +87,10 @@ class CoNALClassifier(MaMLClassifier):
         self.ap_embed_x = ap_embed_x
         self.ap_use_gt_embed_x = ap_use_gt_embed_x
         self.lmbda = lmbda
+
+        if isinstance(self.gt_output, BradleyTerryOutput):
+            n_classes = 1
+
         self.ap_confs_individual = nn.Parameter(
             torch.stack([2 * torch.eye(n_classes)] * len(self.annotators)),
         )
@@ -133,7 +137,6 @@ class CoNALClassifier(MaMLClassifier):
 
         if is_pair:
             x_embedding = x_embedding.view(-1, x_embedding.shape[-1])
-            a_embedding = torch.concat([a_embedding] * 2, dim=0)
 
         common_rate = torch.einsum("ij,kj->ik", (x_embedding, a_embedding))
         common_rate = F.sigmoid(common_rate)
@@ -144,12 +147,13 @@ class CoNALClassifier(MaMLClassifier):
 
         # Compute logits per annotator as pre-step of computing the final probability distribution of annotations:
         # cf. lower part of Eq. (1) in the article [1].
+        if is_pair:
+            common_rate = common_rate.view(-1, self.annotators.shape[0], 2)
+            common_rate = common_rate[..., 0] - common_rate[..., 1]
+
         logits_annot = common_rate[:, :, None] * logits_common[:, None, :]
         logits_annot += (1 - common_rate[:, :, None]) * logits_individual
-        if is_pair:
-            logits_annot = logits_annot.view(-1, 2, self.n_classes)
-            logits_annot = logits_annot[:, 0, :] - logits_annot[:, 1, :]
-
+        logits_annot = torch.concat([torch.zeros_like(logits_annot), logits_annot], dim=-1) # make 2d again
         return p_class, logits_annot
 
     def training_step(self, batch: Dict[str, torch.tensor], batch_idx: int, dataloader_idx: Optional[int] = 0):
