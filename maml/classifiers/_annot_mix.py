@@ -367,8 +367,12 @@ class AnnotMixClassifier(MaMLClassifier):
         else:
             p_class_log = F.log_softmax(output[0], dim=-1)
             p_confusion_log = F.log_softmax(output[1], dim=-1)
-            p_confusion_log = p_confusion_log.reshape((len(x), len(a), p_class_log.shape[1], p_class_log.shape[1]))
-            p_perf = (p_class_log[:, None, :, None] + p_confusion_log).exp().diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+            if self.pair:
+                p_confusion_log = p_confusion_log.reshape((len(x), len(a), p_confusion_log.shape[-1]))
+                p_perf = (p_class_log[:, None, :] + p_confusion_log).logsumexp(dim=-1).exp()
+            else:
+                p_confusion_log = p_confusion_log.reshape((len(x), len(a), p_class_log.shape[1], p_class_log.shape[1]))
+                p_perf = (p_class_log[:, None, :, None] + p_confusion_log).exp().diagonal(dim1=-2, dim2=-1).sum(dim=-1)
             return {"p_class": p_class_log.exp(), "p_perf": p_perf}
 
     @torch.no_grad()

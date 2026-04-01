@@ -142,14 +142,15 @@ class CoNALClassifier(MaMLClassifier):
         common_rate = F.sigmoid(common_rate)
 
         # Compute common confusion matrix and individual confusion matrix products.
-        logits_common = torch.einsum("ij,jk->ik", (p_class, self.ap_confs_common))
-        logits_individual = torch.einsum("ik,jkl->ijl", (p_class, self.ap_confs_individual))
+        p_class_conf = p_class[:, 1:] if is_pair else p_class
+        logits_common = torch.einsum("ij,jk->ik", (p_class_conf, self.ap_confs_common))
+        logits_individual = torch.einsum("ik,jkl->ijl", (p_class_conf, self.ap_confs_individual))
 
         # Compute logits per annotator as pre-step of computing the final probability distribution of annotations:
         # cf. lower part of Eq. (1) in the article [1].
         if is_pair:
-            common_rate = common_rate.view(-1, self.annotators.shape[0], 2)
-            common_rate = common_rate[..., 0] - common_rate[..., 1]
+            common_rate = common_rate.view(-1, 2, self.annotators.shape[0])
+            common_rate = common_rate[:, 0, :] - common_rate[:, 1, :]
 
         logits_annot = common_rate[:, :, None] * logits_common[:, None, :]
         logits_annot += (1 - common_rate[:, :, None]) * logits_individual
