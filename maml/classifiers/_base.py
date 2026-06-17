@@ -1,5 +1,6 @@
 from sklearn.metrics import f1_score
 import torch
+import torch.nn.functional as F
 
 from abc import ABC, abstractmethod
 from lightning.pytorch import LightningModule
@@ -97,7 +98,9 @@ class MaMLClassifier(LightningModule, ABC):
 
     def validation_step(self, batch: Dict[str, torch.tensor], batch_idx: int, dataloader_idx: int = 0):
         """
-        Evaluates and logs the performance of the GT model on the given validation data as `"gt_val_acc"`.
+        Evaluates and logs the performance of the GT model on the given validation data as `"gt_val_acc"`,
+        `"gt_val_f1"`, and `"gt_val_brier"` (plus `"val_acc"`, `"val_f1"`, and `"val_brier"` if aggregated
+        labels `"z_agg"` are available in `batch`).
 
         Parameters
         ----------
@@ -118,14 +121,19 @@ class MaMLClassifier(LightningModule, ABC):
             z_agg_hard = z_agg.argmax(dim=-1)
             acc = (y_pred == z_agg_hard).float().mean()
             f1 = f1_score(y_true=z_agg_hard.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="macro")
+            brier = ((p_class - z_agg) ** 2).sum(dim=-1).mean()
             self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
             self.log("val_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
+            self.log("val_brier", brier, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
 
         y = batch["y"]
+        y_one_hot = F.one_hot(y, num_classes=p_class.shape[-1]).float()
         acc = (y_pred == y).float().mean()
         f1 = f1_score(y_true=y.cpu().numpy(), y_pred=y_pred.cpu().numpy(), average="macro")
+        gt_brier = ((p_class - y_one_hot) ** 2).sum(dim=-1).mean()
         self.log("gt_val_acc", acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
         self.log("gt_val_f1", torch.as_tensor(f1), on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
+        self.log("gt_val_brier", gt_brier, on_step=False, on_epoch=True, prog_bar=True, batch_size=len(y_pred))
 
 
 
