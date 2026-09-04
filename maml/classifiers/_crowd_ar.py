@@ -300,8 +300,8 @@ class CrowdARClassifier(MaMLClassifier):
             The list of the AP models' parameters.
         """
         ap_parameters = list(self.ap_reliability.parameters())
-        ap_parameters += list(self.ap_confs)
-        ap_parameters += list(self.ap_expertise)
+        ap_parameters += [self.ap_confs]
+        ap_parameters += [self.ap_expertise]
         return ap_parameters
 
 

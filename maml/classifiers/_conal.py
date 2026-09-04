@@ -297,6 +297,6 @@ class CoNALClassifier(MaMLClassifier):
         """
         ap_parameters = list(self.ap_embed_a.parameters())
         ap_parameters += list(self.ap_embed_x.parameters())
-        ap_parameters += list(self.ap_confs_common)
-        ap_parameters += list(self.ap_confs_individual)
+        ap_parameters += [self.ap_confs_common]
+        ap_parameters += [self.ap_confs_individual]
         return ap_parameters
